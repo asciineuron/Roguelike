@@ -63,9 +63,9 @@ def bresenham_los_line(x0, y0, x1, y1, grid):
 	derr = abs(dy/dx)
 	error = 0.0
 	y = y0
-	for x in range(x0, x1, 1):
+	for x in range(x0, x1, int(dx/abs(dx))):
 		if grid[y][x] == 1:
-			#visible.append((x,y))
+			visible.append((x,y))
 			return visible
 		visible.append((x,y))
 		error += derr
@@ -82,9 +82,9 @@ def bresenham_los_line_y(x0, y0, x1, y1, grid):
 	derr = abs(dx/dy)
 	error = 0.0
 	x = x0
-	for y in range(y0, y1, 1):
+	for y in range(y0, y1, int(dy/abs(dy))):
 		if grid[y][x] == 1:
-			#visible.append((x,y))
+			visible.append((x,y))
 			return visible
 		visible.append((x,y))
 		error += derr
@@ -117,12 +117,14 @@ def los_line(x0, y0, x1, y1, grid):
 		return visible
 	if abs(dy) > abs(dx):
 		if y0 > y1:
-			visible = bresenham_los_line_y(x1, y1, x0, y0, grid)
+			#visible = bresenham_los_line_y(x1, y1, x0, y0, grid)
+			visible = bresenham_los_line_y(x0, y0, x1, y1, grid)
 		else:
 			visible = bresenham_los_line_y(x0, y0, x1, y1, grid)
 	else:
 		if x0 > x1:
-			visible = bresenham_los_line(x1, y1, x0, y0, grid)
+			#visible = bresenham_los_line(x1, y1, x0, y0, grid)
+			visible = bresenham_los_line(x0, y0, x1, y1, grid)
 		else:
 			visible = bresenham_los_line(x0, y0, x1, y1, grid)
 	return visible

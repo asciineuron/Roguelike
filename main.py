@@ -210,7 +210,7 @@ def display(player, level, tilegraphics):
 			if (x,y) in los:
 				print(Fore.WHITE + "", end = "")
 			else:
-				print(Fore.BLUE + "", end = "")
+				print(Fore.BLACK + "", end = "")
 			if y == player.y and x == player.x:
 				print(tilegraphics.get("player"), end='') # not efficient but whatever for now
 			# elif (x,y) in los:
