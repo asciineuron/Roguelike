@@ -5,22 +5,28 @@ import msvcrt
 from enum import Enum
 from string import ascii_lowercase # can expand later but for now a..z for inventory
 
-class Item_Type(Enum):
+class Item_Type(Enum): # don't think will be used
 	WEAPON = 0 # etc.
 	ARMOR = 1
 
 class Player:
-	def __init__(self, name, symbol):
+	def __init__(self, name, symbol, xp, level):
+		# NOTE can make init contain level, so fits within map...
 		self.name = name
 		self.symbol = symbol
 		self.x = 1
 		self.y = 1
-		self.xp = 0
+		place_start_player(self, level)
+		
+		self.xp = xp
+		self.level = 1
+		self.hp = 20 * self.level
+		self.max_hp = 20 * self.level
 		self.inventory = {} # shold make this a dictionary of letters/nums to items
 		self.equipped_items = {} # can make dictionary entries "head", etc. ? or still letters probably...
 		# might not use above
-		self.hands = None # expand to left right later
-		self.body = None
+		self.weapon = None # expand to left right later
+		self.armor = None
 
 	def get_item(self, item):
 		position = "a"
@@ -36,8 +42,41 @@ class Player:
 				return
 		# no space present if exit loop
 		print("No space in inventory.")
-		return
+		
+	def advance_level(self):
+		if self.xp >= 20*self.level: # TODO set this scaling
+			# advance a level
+			self.level += 1
+			if self.hp + 5 * self.level:
+				 self.hp += 5 * self.level
+			self.max_hp = 20 * self.level
 
+	def kill(self, entity, level):
+		# kills an entity on this level, dropping their loot and bones where they stood,
+		# and yielding it to player
+		for item in entity.inventory:
+			# drop all items
+			level.items[entity.y][entity.x].append(item)
+		print(entity.xp)
+		self.xp += entity.xp # gain xp of fallen foe
+		print(entity.name, " has been slain.")
+		# note del doesn't work well since referenced multiple places, rather remove from entities?
+		# *should* only have 2 refs so perhaps can delete after removing entities
+		level.entities[entity.y][entity.x] = None
+		del entity # remove enemy object
+		# killing gains xp so only check for level up here
+		self.advance_level()
+
+	def attack(self, entity, level):
+		# damages entity, TODO add ac
+		if self.weapon == None:
+			damage = 1 # default hit damage
+		else:
+			damage = self.weapon.damage # must make sure hand hold weapon (i.e. no gloves) --- swap to "weapon" and "shield" etc, come up with some other way to have 2 handed maybe
+		entity.hp -= damage
+		# check if entity dead or do elsewhere?
+		if entity.hp <= 0:
+			self.kill(entity, level)
 
 class Item:
 	def __init__(self, name, symbol):
@@ -52,12 +91,20 @@ class Weapon(Item):
 		self.damage = damage
 
 	def equip(self, player):
-		player.hands = self
+		player.weapon = self
 
+class Armor(Item):
+	def __init__(self, name, ac):
+		super().__init__(name, "a")
+		self.ac = ac
+
+	def equip(self, player):
+		player.armor = self
 
 class Level:
 	# hold tiles, enemies, and items?
 	def __init__(self):
+		# TODO flush out enemy generation
 		# need functions to generate them
 		self.size = 50
 		# need tiles to be a tile class or something
@@ -71,12 +118,16 @@ class Level:
 			self.tiles[i][self.size-1] = 1
 		self.generate_floor()
 		# need monsters to be own class, make same as player class?
-		self.monsters = [[None for i in range(self.size)] for i in range(self.size)]
+		self.entities = [[None for i in range(self.size)] for i in range(self.size)] #[] #[[None for i in range(self.size)] for i in range(self.size)] # monsters array since only 1 per spot max... but need then special funcs to move monsters so will do one single list
+		#self.monsters.append(Player("orc", "o", 10, self))
+		for i in range(10):
+			orc = Player("orc", "o", 10, self)
+		#place_item(orc, self)
+
 		# should above be an array or list? probably list since will be players, have x,y
 		# only problem is slower, have to check each list entry see if xy matches...
 		# since monsters can't stack maybe better to do array, but for items do list since can stack? or make list at each point actually
 		self.items = [[[] for i in range(self.size)] for i in range(self.size)]
-
 
 	def generate_room(self, count):
 		# NOTE count is # tries take, after some number give up...
@@ -113,33 +164,6 @@ class Level:
 	def generate_hallway(self, centerx1, centery1, centerx2, centery2):
 		plot_line(centerx1, centery1, centerx2, centery2, self.tiles, 0)
 
-		# # TODO still doesn't always work....
-		# # open all tiles between the two centers
-		# dx = centerx2-centerx1
-		# dy = centery2-centery1
-		# #if dy%dx != 0:
-		# 	# i.e. want even number of y steps per x step for clearing
-		# 	# pick dy or dx to increase?
-		# 	# perhaps we could just estimate and do int division, have some error by end
-		# y = centery1
-		# x = centerx1
-		# if dx != 0:
-		# 	dydx = int(dy/dx)
-		# 	for x in range(centerx1, centerx2, int(dx/abs(dx))): # NOTE might have to fix sign of + 1 if centerx2 < centerx1...
-		# 		if dydx != 0:
-		# 			for i in range(0, dydx , int(dydx/abs(dydx))): # had dydx + int(dydx/abs(dydx))
-		# 				y += int(dy/abs(dy))
-		# 				#print(dydx, y)
-		# 				self.tiles[y][x] = 0
-		# 		else:
-		# 			# i.e. only x steps
-		# 			self.tiles[y][x] = 0
-		# else:
-		# 	# i.e. only y steps, NOTE for now assuming dy can't be 0 too... would be same spot
-		# 	for y in range(centery1, centery2, int(dy/abs(dy))):
-		# 		self.tiles[y][x] == 0
-
-
 	def generate_floor(self):
 		# generate a number of floors or until unable to generate (i.e. (-1,-1))
 		# then connect rooms
@@ -161,19 +185,48 @@ class Level:
 
 
 def main():
-	player = Player("Alex", "@")
+	#global turncount
+	#turncount = 0
+	level = Level() # will make a list of levels later
+	player = Player("Alex", "@", 0, level)
+	time = Time()
+	#orc = Player("orc", "o", 10)
 	#player.inventory["a"] = Weapon("Sword", 10) # need func to do this automatically
 	player.get_item(Weapon("Sword", 10))
-	level = Level() # will make a list of levels later
-	place_start_player(player, level)
+	
+	#place_start_player(player, level)
 	tilegraphics = generate_graphics()
-	display(player, level, tilegraphics)
+	display(player, level, tilegraphics, time)
 	while process_input(player, level):
+		time.time_update(player, level)
 		#print(player.x, player.y)
-		display(player, level, tilegraphics)
+		display(player, level, tilegraphics, time)
 
+		#turncount += 1
 	return
 
+class Time:
+
+	heal_rate = 0.1
+
+	def __init__(self):
+		self.heal_time = 0
+		self.turncount = 0 # ???
+	
+	def time_update(self, player, level):
+		self.turncount += 1
+		self.heal_time += 1
+		if int(self.heal_rate*self.heal_time) >= 1:
+			if player.hp < player.max_hp:
+				player.hp += 1
+			self.heal_time = 0
+
+
+# def time_update(player, level):
+# 	# heal and other things that happen over time
+# 	heal_rate = 0.1 # need saved outside?
+# 	if (heal_rate*turncount) >= 1:
+# 		# eligible for healing
 
 
 def calculate_LoS(entity, level):
@@ -201,11 +254,13 @@ def place_start_player(player, level):
 	# finds a good spot to put player
 	xpos = int(random()*level.size)
 	ypos = int(random()*level.size)
-	while int(level.tiles[ypos][xpos]):
+	while int(level.tiles[ypos][xpos]) or level.entities[ypos][xpos] != None:
 		xpos = int(random()*level.size)
 		ypos = int(random()*level.size)
 	player.x = xpos
 	player.y = ypos
+	level.entities[ypos][xpos] = player
+	#return (xpos, ypos)
 
 def place_item(item, level):
 	# finds a good spot to put item
@@ -217,11 +272,22 @@ def place_item(item, level):
 	level.items[ypos][xpos].append(item)
 
 def move(entity, x, y, level):
+	# NOTE could place monster on map array so quick, but then moving complicated and separate from player... instead
+	# could have monsters in list but have to check each element :( ...
+	# could do both, store in array and keep x,y ? faster but kinda complicated
+	# think I will do array option -> i.e. level has monsters[][], keep matched with monster.x,y
 	# can return false if unable to complete?
 	if level.tiles[entity.y + y][entity.x + x] == 1:
 		return False
+	if level.entities[entity.y + y][entity.x + x] != None:
+		entity.attack(level.entities[entity.y + y][entity.x + x], level)
+		return True
+	level.entities[entity.y][entity.x] = None
 	entity.x += x
 	entity.y += y
+	level.entities[entity.y][entity.x] = entity
+	# need to update entities grid too
+
 	return True
 
 def process_input(player, level):
@@ -249,6 +315,10 @@ def process_input(player, level):
 		access_inventory(player, level) # maybe make this redo function so doesn't pass turn? idk
 	elif inpt == "g": # get
 		pickup_item(player, level)
+	elif inpt == "e": # equip
+		equip_item(player)
+	elif inpt == "d": # drop
+		drop_item(player, level)
 	elif inpt == "q":
 		return False
 	else:
@@ -273,13 +343,13 @@ def display_inventory(player):
 		print(letter, " - ", item.name)
 	# now print equipment slots
 	print("--- Equipment ---")
-	if player.hands != None:
-		print("hands - ", player.hands.name)
+	if player.weapon != None:
+		print("weapon - ", player.weapon.name)
 	else:
-		print("hands - empty")
+		print("weapon - empty")
 
 def equip_item(player):
-	print("which item to equip?")
+	print("Equip which item?")
 	inpt = (msvcrt.getch()).decode('utf-8')
 	item = player.inventory.get(inpt)
 	while item == None:
@@ -307,8 +377,8 @@ def drop_item(player, level):
 	player.inventory = {key:value for k,v in player.inventory.items() if v != item}
 	#del player.inventory[itemkey] # TODO ensure del works... need key
 	# next check every equipment slot
-	if player.hands == item:
-		player.hands = None
+	if player.weapon == item:
+		player.weapon = None
 		# etc.
 		# should item have location or level store it?
 
@@ -326,12 +396,12 @@ def process_input_inventory(player, level): # don't do this... need letters to a
 	inpt = (msvcrt.getch()).decode('utf-8')
 	if inpt == "q":
 		return False
-	elif inpt == "e": # equip
-		equip_item(player)
-	elif inpt == "d": # drop
-		drop_item(player, level)
-	elif inpt == "g": # get
-		pickup_item(player, level)
+	# elif inpt == "e": # equip
+	# 	equip_item(player)
+	# elif inpt == "d": # drop
+	# 	drop_item(player, level)
+	# elif inpt == "g": # get
+	# 	pickup_item(player, level)
 	else:
 		print(inpt, " is not a recognized command")
 		return process_input(player, level)
@@ -344,7 +414,7 @@ def access_inventory(player, level):
 		#pass
 
 
-def display(player, level, tilegraphics):
+def display(player, level, tilegraphics, time):
 	# again inefficient defined each time, make lookup file/dictionary?
 	los = calculate_LoS(player, level)
 
@@ -354,14 +424,16 @@ def display(player, level, tilegraphics):
 			if (x,y) in los:
 				print(Fore.WHITE + "", end = "")
 			else:
-				print(Fore.BLACK + "", end = "")
-			if y == player.y and x == player.x:
-				#print(tilegraphics.get("player"), end='') # not efficient but whatever for now
-				print(player.symbol, end='')
+				print(Fore.BLUE + "", end = "")
+			# if y == player.y and x == player.x:
+			# 	#print(tilegraphics.get("player"), end='') # not efficient but whatever for now
+			# 	print(player.symbol, end='')
+			if level.entities[y][x] != None:
+				print(level.entities[y][x].symbol, end="")
 			# elif (x,y) in los:
 			# 	print(Fore.RED + "x", end='')
 			else:
-				if level.items[y][x]: # if items present
+				if level.items[y][x]: # if items present, print top item
 				 	print(level.items[y][x][-1].symbol, end='')
 				elif level.tiles[y][x] == 0:
 					print(tilegraphics.get("floor_empty"), end='')
@@ -370,7 +442,7 @@ def display(player, level, tilegraphics):
 				else:
 					print(tilegraphics.get("wall"), end='')
 	print(Fore.WHITE + "\n", end = "")
-	print("Name: ", player.name, " XP: ", player.xp)
+	print("Name: ", player.name, " HP: ", player.hp, "/", player.max_hp, " XP: ", player.xp, " Lvl: ", player.level, " Time: ", time.turncount)
 
-
+turncount = 0
 main()
