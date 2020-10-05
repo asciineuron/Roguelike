@@ -2,14 +2,58 @@ from random import random
 from colorama import Fore
 from lines import *
 import msvcrt
+from enum import Enum
+from string import ascii_lowercase # can expand later but for now a..z for inventory
+
+class Item_Type(Enum):
+	WEAPON = 0 # etc.
+	ARMOR = 1
 
 class Player:
-	def __init__(self, name):
+	def __init__(self, name, symbol):
 		self.name = name
+		self.symbol = symbol
 		self.x = 1
 		self.y = 1
 		self.xp = 0
-		self.items = []
+		self.inventory = {} # shold make this a dictionary of letters/nums to items
+		self.equipped_items = {} # can make dictionary entries "head", etc. ? or still letters probably...
+		# might not use above
+		self.hands = None # expand to left right later
+		self.body = None
+
+	def get_item(self, item):
+		position = "a"
+		while self.inventory.get("a") != None:
+			pass
+		for pos in ascii_lowercase:
+			if self.inventory.get(pos) != None:
+				# letter/slot already used
+				pass
+			else:
+				# add to inventory
+				self.inventory[pos] = item
+				return
+		# no space present if exit loop
+		print("No space in inventory.")
+		return
+
+
+class Item:
+	def __init__(self, name, symbol):
+		self.name = name
+		self.symbol = symbol
+		#self.item_type = item_type
+
+class Weapon(Item):
+	# instead of Enum make subclasses, equip method for each
+	def __init__(self, name, damage):
+		super().__init__(name, "w") # if subclasses e.g. sword axe can further differentiate
+		self.damage = damage
+
+	def equip(self, player):
+		player.hands = self
+
 
 class Level:
 	# hold tiles, enemies, and items?
@@ -27,7 +71,12 @@ class Level:
 			self.tiles[i][self.size-1] = 1
 		self.generate_floor()
 		# need monsters to be own class, make same as player class?
-		self.monsters = [[0 for i in range(self.size)] for i in range(self.size)]
+		self.monsters = [[None for i in range(self.size)] for i in range(self.size)]
+		# should above be an array or list? probably list since will be players, have x,y
+		# only problem is slower, have to check each list entry see if xy matches...
+		# since monsters can't stack maybe better to do array, but for items do list since can stack? or make list at each point actually
+		self.items = [[[] for i in range(self.size)] for i in range(self.size)]
+
 
 	def generate_room(self, count):
 		# NOTE count is # tries take, after some number give up...
@@ -112,7 +161,9 @@ class Level:
 
 
 def main():
-	player = Player("Alex")
+	player = Player("Alex", "@")
+	#player.inventory["a"] = Weapon("Sword", 10) # need func to do this automatically
+	player.get_item(Weapon("Sword", 10))
 	level = Level() # will make a list of levels later
 	place_start_player(player, level)
 	tilegraphics = generate_graphics()
@@ -156,6 +207,14 @@ def place_start_player(player, level):
 	player.x = xpos
 	player.y = ypos
 
+def place_item(item, level):
+	# finds a good spot to put item
+	xpos = int(random()*level.size)
+	ypos = int(random()*level.size)
+	while int(level.tiles[ypos][xpos]):
+		xpos = int(random()*level.size)
+		ypos = int(random()*level.size)
+	level.items[ypos][xpos].append(item)
 
 def move(entity, x, y, level):
 	# can return false if unable to complete?
@@ -166,6 +225,7 @@ def move(entity, x, y, level):
 	return True
 
 def process_input(player, level):
+	# TODO need a way to have commands that pass a turn and those that don't e.g. inventory (or have all inventory actions contained within e.g. "i" maybe)
 	# add handling if move can't complete etc.
 	#inpt = input(">")
 	inpt = (msvcrt.getch()).decode('utf-8') # windows dependent
@@ -185,6 +245,10 @@ def process_input(player, level):
 		move(player, -1, 1, level)
 	elif inpt == "u": # NW
 		move(player, 1, 1, level)
+	elif inpt == "i": # inventory
+		access_inventory(player, level) # maybe make this redo function so doesn't pass turn? idk
+	elif inpt == "g": # get
+		pickup_item(player, level)
 	elif inpt == "q":
 		return False
 	else:
@@ -193,12 +257,92 @@ def process_input(player, level):
 	return True
 
 def generate_graphics():
+	# TODO rather, record the ascii within each class? i.e. player, item, etc?
 	# records the ascii to be used for different items
+	# we can keep for walls/floors?
 	tiles_dictionary = {}
 	tiles_dictionary["floor_empty"] = "."
 	tiles_dictionary["wall"] = "#"
 	tiles_dictionary["player"] = "@"
+	tiles_dictionary["sword"] = "s"
 	return tiles_dictionary
+
+def display_inventory(player):
+	print("--- Inventory ---")
+	for (letter, item) in player.inventory.items():
+		print(letter, " - ", item.name)
+	# now print equipment slots
+	print("--- Equipment ---")
+	if player.hands != None:
+		print("hands - ", player.hands.name)
+	else:
+		print("hands - empty")
+
+def equip_item(player):
+	print("which item to equip?")
+	inpt = (msvcrt.getch()).decode('utf-8')
+	item = player.inventory.get(inpt)
+	while item == None:
+		print("No such item.")
+		inpt = (msvcrt.getch()).decode('utf-8')
+		item = player.inventory.get(inpt)
+	#if player.equipped_items.get(inpt)
+	#player.equipped_items[inpt] = item
+	#item_type = item.
+	item.equip(player)
+	print("ok")
+
+def drop_item(player, level):
+	# probably have level store list of items, each stores its x,y but what about when in inventory??? set xy none?
+	print("which item to drop?")
+	inpt = (msvcrt.getch()).decode('utf-8')
+	item = player.inventory.get(inpt)
+	while item == None:
+		print("No such item.")
+		inpt = (msvcrt.getch()).decode('utf-8')
+		item = player.inventory.get(inpt)
+
+	level.items[player.y][player.x].append(item)
+	# remove item from dictionary:
+	player.inventory = {key:value for k,v in player.inventory.items() if v != item}
+	#del player.inventory[itemkey] # TODO ensure del works... need key
+	# next check every equipment slot
+	if player.hands == item:
+		player.hands = None
+		# etc.
+		# should item have location or level store it?
+
+def pickup_item(player, level):
+	# TODO for simplicity begin with taking last element, expand to selection screen later
+	# need method to add to inventory, separate from this (should it be func of player class? yes since doesn't need level just item)
+	if not level.items[player.y][player.x]:
+		print("No items here.")
+		return
+	item = level.items[player.y][player.x].pop() # remove last element from list
+	player.get_item(item)
+
+
+def process_input_inventory(player, level): # don't do this... need letters to access items, and should be able to equip even not looking at inventory
+	inpt = (msvcrt.getch()).decode('utf-8')
+	if inpt == "q":
+		return False
+	elif inpt == "e": # equip
+		equip_item(player)
+	elif inpt == "d": # drop
+		drop_item(player, level)
+	elif inpt == "g": # get
+		pickup_item(player, level)
+	else:
+		print(inpt, " is not a recognized command")
+		return process_input(player, level)
+	return True
+
+def access_inventory(player, level):
+	display_inventory(player)
+	while process_input_inventory(player, level):
+		display_inventory(player)
+		#pass
+
 
 def display(player, level, tilegraphics):
 	# again inefficient defined each time, make lookup file/dictionary?
@@ -212,11 +356,14 @@ def display(player, level, tilegraphics):
 			else:
 				print(Fore.BLACK + "", end = "")
 			if y == player.y and x == player.x:
-				print(tilegraphics.get("player"), end='') # not efficient but whatever for now
+				#print(tilegraphics.get("player"), end='') # not efficient but whatever for now
+				print(player.symbol, end='')
 			# elif (x,y) in los:
 			# 	print(Fore.RED + "x", end='')
 			else:
-				if level.tiles[y][x] == 0:
+				if level.items[y][x]: # if items present
+				 	print(level.items[y][x][-1].symbol, end='')
+				elif level.tiles[y][x] == 0:
 					print(tilegraphics.get("floor_empty"), end='')
 				# elif level.tiles[y][x] == -1:
 				# 	print("x", end='')
